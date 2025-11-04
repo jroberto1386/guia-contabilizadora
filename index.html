@@ -280,7 +280,11 @@
         let currentBalance = 10000; /* Estado para el saldo de simulación */
         
         // --- Integración de Gemini API ---
-        const apiKey = ""; // API Key se gestiona en el entorno de ejecución
+        const userApiKey = "AIzaSyAzhcKntZyj2v2TusYBnR8MyyxYvpoNspU"; // API Key incorporada
+
+        /* La función getApiKey() ya no es necesaria ya que la clave está incorporada.
+         Se ha eliminado para simplificar.
+        */
         
         function showLoading(message) {
             loadingMessage.textContent = message;
@@ -315,7 +319,9 @@
         }
 
         async function callGemini(prompt, systemPrompt) {
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const key = userApiKey; // Usar la clave incorporada
+            
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${key}`;
             
             const payload = {
                 contents: [{ parts: [{ text: prompt }] }],
@@ -334,6 +340,11 @@
             });
 
             if (!response.ok) {
+                // Si el error es 400, probablemente la clave es inválida
+                if (response.status === 400) {
+                    // Ya no borramos la clave, solo informamos.
+                    throw new Error("API Key inválida o malformada. Revisa la clave en el código.");
+                }
                 throw new Error(`Error en API: ${response.statusText}`);
             }
 
@@ -696,7 +707,11 @@
                 outputDiv.innerHTML = `<p class="text-gray-700">${explanation}</p>`;
                 outputDiv.classList.remove('hidden');
             } catch (error) {
-                outputDiv.innerHTML = `<p class="text-red-600">Error al contactar la IA. Intenta de nuevo.</p>`;
+                let errorMessage = "Error al contactar la IA. Intenta de nuevo.";
+                if (error.message.includes("API Key")) {
+                    errorMessage = error.message; // Mostrar el error específico de la API Key
+                }
+                outputDiv.innerHTML = `<p class="text-red-600">${errorMessage}</p>`;
                 outputDiv.classList.remove('hidden');
             } finally {
                 hideLoading();
@@ -747,7 +762,11 @@
                 `;
 
             } catch (error) {
-                outputDiv.innerHTML = `<p class="text-red-600">Error al generar escenario. Intenta de nuevo.</p>`;
+                let errorMessage = "Error al generar escenario. Intenta de nuevo.";
+                if (error.message.includes("API Key")) {
+                    errorMessage = error.message; // Mostrar el error específico de la API Key
+                }
+                outputDiv.innerHTML = `<p class="text-red-600">${errorMessage}</p>`;
             } finally {
                 hideLoading();
             }
@@ -787,3 +806,6 @@
 
 </body>
 </html>
+
+
+
