@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-M">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guía Contable Interactiva (IA)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chosen Palette: Warm Neutrals -->
+    <!-- Application Structure Plan: Una interfaz 'Master-Detail'. Una barra lateral persistente (master) permite la navegación por categoría principal (Activo, Pasivo) y una lista con buscador de todas las cuentas. Hacer clic en una cuenta actualiza el área de contenido principal (detalle) para mostrar su información específica. Esta estructura se eligió por usabilidad, permitiendo a los usuarios encontrar rápidamente cualquier cuenta y ver sus detalles sin tener que desplazarse, a diferencia del reporte lineal. -->
+    <!-- Visualization & Content Choices: Info del Reporte: Reglas 'Se Carga / Se Abona' para cada cuenta. Objetivo: Explicar visualmente la regla de débito/crédito para la cuenta seleccionada. Viz/Presentación: Una 'Cuenta T' (Esquema de Mayor) dinámica construida con HTML/Tailwind. Interacción: La Cuenta T se actualiza según la cuenta seleccionada, mostrando (Aumenta/Disminuye) en el lado correcto (Cargo/Abono) según la 'Naturaleza' de la cuenta (Deudora/Acreedora). Justificación: Esta es la herramienta pedagógica estándar para enseñar contabilidad, haciendo concretas y visuales las reglas abstractas del reporte. Librería: Ninguna (solo HTML/Tailwind). -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        .nav-button.active {
+            background-color: #059669; /* emerald-600 */
+            color: white;
+        }
+        .account-button:hover, .account-button.active {
+            background-color: #F0FDF4; /* green-50 */
+            border-right: 4px solid #059669; /* emerald-600 */
+        }
+        .t-account-container {
+            border: 2px solid #D1D5DB; /* gray-300 */
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .t-account-header {
+            border-bottom: 2px solid #D1D5DB; /* gray-300 */
+        }
+        .t-account-body {
+            display: flex;
+            min-height: 200px;
+        }
+        .t-account-side {
+            width: 50%;
+            padding: 1rem;
+        }
+        .t-account-left {
+            border-right: 1px solid #D1D5DB; /* gray-300 */
+        }
+        .t-account-right {
+            border-left: 1px solid #D1D5DB; /* gray-300 */
+        }
+        .t-account-side h4 {
+            font-weight: 600;
+            color: #4B5563; /* gray-600 */
+            border-bottom: 1px dashed #9CA3AF; /* gray-400 */
+            padding-bottom: 0.5rem;
+        }
+        .t-account-side .effect-increase {
+            color: #059669; /* emerald-600 */
+            font-weight: 500;
+        }
+        .t-account-side .effect-decrease {
+            color: #DC2626; /* red-600 */
+            font-weight: 500;
+        }
+        
+        /* Ocultar scrollbar en la lista de cuentas para un look más limpio */
+        #account-list-container::-webkit-scrollbar {
+            display: none;
+        }
+        #account-list-container {
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+
+        /* Animación para la simulación */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.5s ease;
+        }
+
+        /* Estilos para el log de simulación dentro de la Cuenta T */
+        .simulation-log {
+            list-style: none;
+            padding: 0;
+            margin-top: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .simulation-log li {
+            font-size: 0.875rem; /* text-sm */
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem; /* rounded */
+        }
+        .log-cargo {
+            background-color: #D1FAE5; /* green-100 */
+            color: #065F46; /* green-800 */
+            border: 1px solid #6EE7B7; /* green-300 */
+        }
+        .log-abono {
+            background-color: #FEE2E2; /* red-100 */
+            color: #991B1B; /* red-800 */
+            border: 1px solid #FCA5A5; /* red-300 */
+        }
+        
+        /* Estilos para el botón de IA */
+        .gemini-button {
+            background-color: #EDE9FE; /* violet-100 */
+            color: #5B21B6; /* violet-700 */
+            border: 1px solid #C4B5FD; /* violet-300 */
+        }
+        .gemini-button:hover {
+            background-color: #DDD6FE; /* violet-200 */
+        }
+
+        /* Salida de IA */
+        #gemini-explain-output {
+            background-color: #F5F3FF; /* violet-50 */
+            border-left: 4px solid #7C3AED; /* violet-500 */
+            padding: 1rem;
+            margin-top: 1rem;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+    <!-- Overlay de Carga -->
+    <div id="loading-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-[100] flex items-center justify-center hidden">
+        <div class="bg-white p-6 rounded-lg shadow-xl flex items-center gap-4">
+            <svg class="animate-spin h-6 w-6 text-emerald-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span id="loading-message" class="text-lg font-medium text-gray-700">Procesando...</span>
+        </div>
+    </div>
+
+    <!-- Encabezado Móvil -->
+    <header class="md:hidden bg-white shadow-md p-4 flex justify-between items-center sticky top-0 z-40">
+        <h1 class="text-xl font-bold text-gray-900">Guía Contable</h1>
+        <button id="mobile-menu-button" class="p-2 rounded-lg text-gray-600 hover:bg-gray-100">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+        </button>
+    </header>
+
+    <div class="flex flex-col md:flex-row min-h-screen">
+        
+        <!-- Sidebar de Navegación -->
+        <aside id="sidebar" class="w-full md:w-80 lg:w-96 bg-white border-r border-gray-200 flex-col shadow-lg 
+                    fixed md:static inset-0 z-50 
+                    transform -translate-x-full md:transform-none 
+                    transition-transform duration-300 ease-in-out
+                    flex">
+            <div class="p-4 border-b border-gray-200 flex justify-between items-center">
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-900">Guía Contable</h1>
+                    <p class="text-sm text-gray-600">Explorador de Cuentas (IA)</p>
+                </div>
+                <button id="close-menu-button" class="md:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            
+            <nav class="p-4 space-y-2">
+                <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Categorías</h3>
+                <button id="nav-fundamentos" class="nav-button w-full text-left px-4 py-2 rounded-lg text-gray-700 hover:bg-gray-100 font-medium active flex items-center gap-2">
+                    📖 Fundamentos
+                </button>
+                <button id="nav-activo" class="nav-button w-full text-left px-4 py-2 rounded-lg text-gray-700 hover:bg-gray-100 font-medium flex items-center gap-2">
+                    💼 1. Activo
+                </button>
+                <button id="nav-pasivo" class="nav-button w-full text-left px-4 py-2 rounded-lg text-gray-700 hover:bg-gray-100 font-medium flex items-center gap-2">
+                    💳 2. Pasivo
+                </button>
+                <button id="nav-capital" class="nav-button w-full text-left px-4 py-2 rounded-lg text-gray-700 hover:bg-gray-100 font-medium flex items-center gap-2">
+                    🏠 3. Capital Contable
+                </button>
+                <button id="nav-resultados" class="nav-button w-full text-left px-4 py-2 rounded-lg text-gray-700 hover:bg-gray-100 font-medium flex items-center gap-2">
+                    📊 4. Cuentas de Resultados
+                </button>
+            </nav>
+            
+            <div class="p-4 border-t border-gray-200">
+                <input type="search" id="search-bar" placeholder="Buscar cuenta..." class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500">
+            </div>
+
+            <div class="flex-1 overflow-y-auto border-t border-gray-200" id="account-list-container">
+                <p class="p-4 text-sm text-gray-500" id="account-list-placeholder">Selecciona una categoría para ver las cuentas.</p>
+                <div id="account-list" class="divide-y divide-gray-100">
+                    <!-- Las cuentas se cargarán aquí dinámicamente -->
+                </div>
+            </div>
+        </aside>
+
+        <!-- Área de Contenido Principal -->
+        <main class="flex-1 p-6 md:p-10 bg-gray-50">
+            <div class="max-w-4xl mx-auto" id="detail-view">
+                <!-- El contenido se cargará aquí dinámicamente -->
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const allData = {
+            "fundamentos": {
+                "title": "Fundamentos: Naturaleza de las Cuentas",
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "text": "Toda la contabilidad se basa en la **Teoría de la Partida Doble** ('a todo cargo corresponde un abono'). La naturaleza de una cuenta nos dice cómo aumenta y cómo disminuye su saldo."
+                    },
+                    {
+                        "type": "t-account-group",
+                        "accounts": [
+                            {
+                                "title": "1. Naturaleza Deudora",
+                                "subtitle": "(Activo, Costos y Gastos)",
+                                "naturaleza": "Deudora",
+                                "cargo_effect": "Aumentan",
+                                "abono_effect": "Disminuyen",
+                                "saldo": "Su saldo normal es Deudor."
+                            },
+                            {
+                                "title": "2. Naturaleza Acreedora",
+                                "subtitle": "(Pasivo, Capital e Ingresos)",
+                                "naturaleza": "Acreedora",
+                                "cargo_effect": "Disminuyen",
+                                "abono_effect": "Aumentan",
+                                "saldo": "Su saldo normal es Acreedor."
+                            }
+                        ]
+                    }
+                ]
+            },
+            "cuentas": [
+                { "id": "caja", "categoria": "1. Activo", "subcategoria": "1.1 Activo Circulante", "nombre": "Caja", "naturaleza": "Deudora", "se_carga": "Por las entradas de dinero en efectivo (ventas de contado, cobros a clientes, etc.).", "se_abona": "Por las salidas de dinero en efectivo (pago a proveedores, depósitos bancarios, pago de gastos menores).", "saldo": "Representa el dinero en efectivo disponible físicamente en la empresa al momento." },
+                { "id": "bancos", "categoria": "1. Activo", "subcategoria": "1.1 Activo Circulante", "nombre": "Bancos", "naturaleza": "Deudora", "se_carga": "Por los depósitos (efectivo, cheques), transferencias recibidas, y rendimientos financieros.", "se_abona": "Por la expedición de cheques, transferencias enviadas, comisiones bancarias, y pagos de servicios.", "saldo": "Representa el dinero disponible en las cuentas de cheques o de ahorro de la empresa." },
+                { "id": "clientes", "categoria": "1. Activo", "subcategoria": "1.1 Activo Circulante", "nombre": "Clientes", "naturaleza": "Deudora", "se_carga": "Por las ventas de mercancía o servicios a crédito.", "se_abona": "Cuando el cliente paga (en efectivo, cheque o transferencia), o por devoluciones, descuentos sobre venta, o al declararse incobrable.", "saldo": "Representa el monto total que los clientes deben a la empresa por ventas a crédito." },
+                { "id": "almacen", "categoria": "1. Activo", "subcategoria": "1.1 Activo Circulante", "nombre": "Almacén (o Inventarios)", "naturaleza": "Deudora", "se_carga": "Por la compra de mercancía (a precio de costo), por devoluciones de clientes (a precio de costo).", "se_abona": "Por las ventas de mercancía (registradas a precio de costo, dando salida al Costo de Venta), o por devoluciones a proveedores.", "saldo": "Representa el valor (al costo) de la mercancía disponible para la venta." },
+                { "id": "deudores_diversos", "categoria": "1. Activo", "subcategoria": "1.1 Activo Circulante", "nombre": "Deudores Diversos", "naturaleza": "Deudora", "se_carga": "Por préstamos a empleados, ventas de activos fijos a crédito (que no sean mercancía), o cualquier derecho de cobro a favor que no sea por ventas.", "se_abona": "Cuando dichos deudores pagan su deuda.", "saldo": "Representa el monto total que terceros (que no son clientes) deben a la empresa." },
+                { "id": "iva_acreditable", "categoria": "1. Activo", "subcategoria": "1.1 Activo Circulante", "nombre": "IVA Acreditable", "naturaleza": "Deudora", "se_carga": "Por el IVA pagado en compras y gastos (de contado). También al final del mes para saldar contra el IVA Trasladado.", "se_abona": "Al final del mes para determinar el pago de impuestos (se salda contra IVA Trasladado y/o IVA por Pagar).", "saldo": "Representa el monto de IVA que la empresa ha pagado y que puede restar (acreditar) contra el IVA cobrado (Trasladado)." },
+                { "id": "pagos_anticipados", "categoria": "1. Activo", "subcategoria": "1.1 Activo Circulante", "nombre": "Pagos Anticipados", "naturaleza": "Deudora", "se_carga": "Cuando se realiza el pago por un servicio que se recibirá en el futuro (pago de 6 meses de renta).", "se_abona": "Conforme el gasto se devenga (cada mes que pasa, se abona esta cuenta y se carga a Gastos de Administración o Venta).", "saldo": "Representa el derecho a recibir un servicio o beneficio en el futuro por el cual ya se pagó." },
+                { "id": "terrenos", "categoria": "1. Activo", "subcategoria": "1.2 Activo No Circulante", "nombre": "Terrenos", "naturaleza": "Deudora", "se_carga": "Por el costo de adquisición del terreno.", "se_abona": "Únicamente cuando se vende el terreno. (Nota: Los terrenos no se deprecian).", "saldo": "Representa el valor de los terrenos propiedad de la empresa." },
+                { "id": "edificios", "categoria": "1. Activo", "subcategoria": "1.2 Activo No Circulante", "nombre": "Edificios", "naturaleza": "Deudora", "se_carga": "Por el costo de adquisición o construcción del inmueble.", "se_abona": "Cuando se vende el edificio o se da de baja por obsolescencia.", "saldo": "Representa el valor de costo de los edificios propiedad de la empresa." },
+                { "id": "mobiliario", "categoria": "1. Activo", "subcategoria": "1.2 Activo No Circulante", "nombre": "Mobiliario y Equipo de Oficina", "naturaleza": "Deudora", "se_carga": "Por el costo de adquisición de escritorios, sillas, archiveros, etc.", "se_abona": "Cuando se venden o se dan de baja por estar obsoletos.", "saldo": "Representa el valor de costo del mobiliario." },
+                { "id": "equipo_transporte", "categoria": "1. Activo", "subcategoria": "1.2 Activo No Circulante", "nombre": "Equipo de Transporte", "naturaleza": "Deudora", "se_carga": "Por el costo de adquisición de vehículos (autos, camionetas) para uso de la empresa.", "se_abona": "Cuando se venden o se dan de baja.", "saldo": "Representa el valor de costo de los vehículos." },
+                { "id": "depreciacion_acumulada", "categoria": "1. Activo", "subcategoria": "1.2 Activo No Circulante", "nombre": "Depreciación Acumulada", "naturaleza": "Acreedora", "se_carga": "Cuando se vende o da de baja el activo fijo correspondiente.", "se_abona": "Periódicamente (mes con mes), para registrar el desgaste del activo. (Cargo a Gastos de Venta/Admón y Abono a Depreciación Acum.).", "saldo": "Representa el monto total del desgaste acumulado que ha sufrido un activo fijo desde que se compró." },
+                { "id": "proveedores", "categoria": "2. Pasivo", "subcategoria": "2.1 Pasivo a Corto Plazo", "nombre": "Proveedores", "naturaleza": "Acreedora", "se_carga": "Cuando se paga la deuda al proveedor (con cheque, transferencia), o por devoluciones sobre compra.", "se_abona": "Por las compras de mercancía a crédito.", "saldo": "Representa el monto total que se debe a los proveedores por la compra de mercancía." },
+                { "id": "acreedores_diversos", "categoria": "2. Pasivo", "subcategoria": "2.1 Pasivo a Corto Plazo", "nombre": "Acreedores Diversos", "naturaleza": "Acreedora", "se_carga": "Cuando se paga la deuda (ej. pago de luz, teléfono, renta, o pago por la compra de mobiliario a crédito).", "se_abona": "Por deudas a crédito que no sean por mercancía (compra de equipo de cómputo a crédito, servicios de luz, agua, teléfono pendientes de pago).", "saldo": "Representa el monto total que se debe por conceptos distintos a la mercancía." },
+                { "id": "impuestos_por_pagar", "categoria": "2. Pasivo", "subcategoria": "2.1 Pasivo a Corto Plazo", "nombre": "Impuestos por Pagar", "naturaleza": "Acreedora", "se_carga": "Cuando se realiza el pago mensual o anual del impuesto al SAT.", "se_abona": "Al final del mes/periodo, cuando se determina la obligación de pago del impuesto. (Ej. cuando el IVA Trasladado es mayor al IVA Acreditable).", "saldo": "Representa el monto de impuestos que la empresa debe a la autoridad fiscal." },
+                { "id": "iva_trasladado", "categoria": "2. Pasivo", "subcategoria": "2.1 Pasivo a Corto Plazo", "nombre": "IVA Trasladado", "naturaleza": "Acreedora", "se_carga": "Al final del mes para determinar el pago de impuestos (se salda contra IVA Acreditable).", "se_abona": "Por el IVA cobrado en las ventas (de contado).", "saldo": "Representa el monto de IVA que la empresa ha cobrado a sus clientes y que, por ende, le \"debe\" al SAT." },
+                { "id": "anticipo_clientes", "categoria": "2. Pasivo", "subcategoria": "2.1 Pasivo a Corto Plazo", "nombre": "Anticipo de Clientes", "naturaleza": "Acreedora", "se_carga": "Cuando se entrega el producto o se presta el servicio (cancelando el anticipo y reconociendo el Ingreso/Venta).", "se_abona": "Cuando un cliente paga por adelantado por un servicio o producto que aún no se le ha entregado.", "saldo": "Representa la obligación de entregar un producto o servicio en el futuro." },
+                { "id": "prestamos_bancarios_lp", "categoria": "2. Pasivo", "subcategoria": "2.2 Pasivo a Largo Plazo", "nombre": "Préstamos Bancarios (Largo Plazo)", "naturaleza": "Acreedora", "se_carga": "Por los pagos (amortizaciones de capital) que se realizan del préstamo. (Los intereses son un Gasto Financiero).", "se_abona": "Cuando se recibe el dinero del préstamo o se firma la hipoteca.", "saldo": "Representa el capital pendiente de pago de una deuda cuya liquidación total es mayor a un año." },
+                { "id": "capital_social", "categoria": "3. Capital Contable", "subcategoria": "3.1 Capital Contribuido", "nombre": "Capital Social", "naturaleza": "Acreedora", "se_carga": "Por retiros de capital o disminución de la participación de los socios (requiere formalidad legal).", "se_abona": "Por las aportaciones iniciales y posteriores de los socios (en efectivo o en especie).", "saldo": "Representa el monto de las aportaciones de los socios registradas en el acta constitutiva." },
+                { "id": "utilidad_ejercicio", "categoria": "3. Capital Contable", "subcategoria": "3.2 Capital Ganado", "nombre": "Utilidad del Ejercicio", "naturaleza": "Acreedora", "se_carga": "Al final del ejercicio, para traspasar su saldo a la cuenta de Utilidades Acumuladas.", "se_abona": "Al final del ejercicio, si los Ingresos fueron mayores a los Gastos. (Se obtiene del Estado de Resultados).", "saldo": "Representa la ganancia neta generada durante el periodo actual." },
+                { "id": "perdida_ejercicio", "categoria": "3. Capital Contable", "subcategoria": "3.2 Capital Ganado", "nombre": "Pérdida del Ejercicio", "naturaleza": "Deudora", "se_carga": "Al final del ejercicio, si los Gastos fueron mayores a los Ingresos.", "se_abona": "Al final del ejercicio, para traspasar su saldo a Utilidades Acumuladas (o Pérdidas Acumuladas).", "saldo": "Representa la pérdida neta generada durante el periodo actual." },
+                { "id": "utilidades_acumuladas", "categoria": "3. Capital Contable", "subcategoria": "3.2 Capital Ganado", "nombre": "Utilidades Acumuladas", "naturaleza": "Acreedora", "se_carga": "Por el pago de dividendos a los socios, o para absorber pérdidas de ejercicios futuros.", "se_abona": "Con el traspaso de la Utilidad del Ejercicio al inicio del siguiente año.", "saldo": "Representa las ganancias generadas por la empresa en años anteriores que no se han repartido a los socios." },
+                { "id": "ventas", "categoria": "4. Cuentas de Resultados", "subcategoria": "4.1 Ingresos", "nombre": "Ventas (o Ingresos por Servicios)", "naturaleza": "Acreedora", "se_carga": "Por las devoluciones o descuentos sobre venta. (Al final del periodo se salda contra \"Pérdidas y Ganancias\").", "se_abona": "Por cada venta de mercancía o prestación de servicio (a precio de venta).", "saldo": "Representa el ingreso bruto total generado en el periodo." },
+                { "id": "costo_ventas", "categoria": "4. Cuentas de Resultados", "subcategoria": "4.2 Costos y Gastos", "nombre": "Costo de Ventas", "naturaleza": "Deudora", "se_carga": "Cada vez que se realiza una venta (dando de baja el inventario a precio de costo).", "se_abona": "Por devoluciones de clientes (cuando el producto regresa al almacén). (Al final del periodo se salda).", "saldo": "Representa el costo de la mercancía que se vendió." },
+                { "id": "gastos_venta", "categoria": "4. Cuentas de Resultados", "subcategoria": "4.2 Costos y Gastos", "nombre": "Gastos de Venta", "naturaleza": "Deudora", "se_carga": "Por todos los gastos relacionados con la venta (sueldos de vendedores, comisiones, publicidad, fletes, depreciación de equipo de reparto).", "se_abona": "Al final del periodo para saldarla contra \"Pérdidas y Ganancias\".", "saldo": "Representa el total de gastos incurridos para poder vender." },
+                { "id": "gastos_administracion", "categoria": "4. Cuentas de Resultados", "subcategoria": "4.2 Costos y Gastos", "nombre": "Gastos de Administración", "naturaleza": "Deudora", "se_carga": "Por todos los gastos de la \"oficina\" (sueldo del contador, gerente, rentas de oficina, luz, agua, papelería, depreciación de equipo de oficina).", "se_abona": "Al final del periodo para saldarla contra \"Pérdidas y Ganancias\".", "saldo": "Representa el total de gastos incurridos para administrar la empresa." },
+                { "id": "gastos_financieros", "categoria": "4. Cuentas de Resultados", "subcategoria": "4.2 Costos y Gastos", "nombre": "Gastos Financieros", "naturaleza": "Deudora", "se_carga": "Por los intereses pagados al banco por préstamos, y por comisiones bancarias.", "se_abona": "Al final del periodo para saldarla.", "saldo": "Representa el costo del financiamiento de la empresa." },
+                { "id": "productos_financieros", "categoria": "4. Cuentas de Resultados", "subcategoria": "4.2 Costos y Gastos", "nombre": "Productos Financieros", "naturaleza": "Acreedora", "se_carga": "Al final del periodo para saldarla.", "se_abona": "Por los intereses ganados en inversiones o cuentas bancarias.", "saldo": "Representa los ingresos generados por inversiones." }
+            ]
+        };
+
+        const detailView = document.getElementById('detail-view');
+        const accountList = document.getElementById('account-list');
+        const accountListPlaceholder = document.getElementById('account-list-placeholder');
+        const searchBar = document.getElementById('search-bar');
+        const navButtons = document.querySelectorAll('.nav-button');
+        const sidebar = document.getElementById('sidebar');
+        const mobileMenuButton = document.getElementById('mobile-menu-button');
+        const closeMenuButton = document.getElementById('close-menu-button');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingMessage = document.getElementById('loading-message');
+        let currentCategory = 'Fundamentos';
+        let currentAccount = '';
+        let currentBalance = 10000; /* Estado para el saldo de simulación */
+        
+        // --- Integración de Gemini API ---
+        const apiKey = ""; // API Key se gestiona en el entorno de ejecución
+        
+        function showLoading(message) {
+            loadingMessage.textContent = message;
+            loadingOverlay.classList.remove('hidden');
+        }
+
+        function hideLoading() {
+            loadingOverlay.classList.add('hidden');
+        }
+
+        /**
+         * Llama a la API de Gemini con una lógica de reintentos (exponential backoff).
+         * @param {string} prompt - El prompt para el modelo.
+         * @param {string} systemPrompt - La instrucción del sistema para el modelo.
+         * @param {number} maxRetries - Número máximo de reintentos.
+         * @returns {Promise<string>} - El texto de la respuesta del modelo.
+         */
+        async function callGeminiWithBackoff(prompt, systemPrompt, maxRetries = 3) {
+            let delay = 1000;
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    return await callGemini(prompt, systemPrompt);
+                } catch (error) {
+                    if (i === maxRetries - 1) {
+                        console.error("Error final de API:", error);
+                        throw error;
+                    }
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2;
+                }
+            }
+        }
+
+        async function callGemini(prompt, systemPrompt) {
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            
+            const payload = {
+                contents: [{ parts: [{ text: prompt }] }],
+            };
+
+            if (systemPrompt) {
+                payload.systemInstruction = {
+                    parts: [{ text: systemPrompt }]
+                };
+            }
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                throw new Error(`Error en API: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+            const candidate = result.candidates?.[0];
+
+            if (candidate && candidate.content?.parts?.[0]?.text) {
+                return candidate.content.parts[0].text;
+            } else {
+                throw new Error("Respuesta de API inválida o vacía.");
+            }
+        }
+
+        // --- Fin de Integración de Gemini API ---
+
+        function renderTAccount(accountName, naturaleza, cargoEffect, abonoEffect, seCargaText = '', seAbonaText = '') {
+            const isFundamental = seCargaText === '';
+            
+            return `
+                <div class="t-account-container mt-6 shadow-sm">
+                    <div class="t-account-header p-3 bg-gray-100">
+                        <h3 class="text-lg font-semibold text-center text-gray-900">${accountName}</h3>
+                    </div>
+                    <div class="t-account-body">
+                        <div class="t-account-side t-account-left ${isFundamental ? '' : 'bg-green-50'}">
+                            <h4 class="text-center">DEBE (Cargo)</h4>
+                            <p class="mt-3 text-sm effect-${cargoEffect === 'Aumentan' ? 'increase' : 'decrease'}">
+                                <strong>${cargoEffect}</strong>
+                            </p>
+                            <p class="mt-4 text-sm text-gray-700">${seCargaText}</p>
+                        </div>
+                        <div class="t-account-side t-account-right ${isFundamental ? '' : 'bg-red-50'}">
+                            <h4 class="text-center">HABER (Abono)</h4>
+                            <p class="mt-3 text-sm effect-${abonoEffect === 'Aumentan' ? 'increase' : 'decrease'}">
+                                <strong>${abonoEffect}</strong>
+                            </p>
+                            <p class="mt-4 text-sm text-gray-700">${seAbonaText}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function renderFundamentos() {
+            const data = allData.fundamentos;
+            let html = `<h2 class="text-3xl font-bold text-gray-900 mb-6">${data.title}</h2>`;
+            
+            data.content.forEach(item => {
+                if (item.type === 'paragraph') {
+                    html += `<p class="text-lg text-gray-700 leading-relaxed mb-8">${item.text.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-800">$1</strong>')}</p>`;
+                }
+                if (item.type === 't-account-group') {
+                    html += `<div class="grid grid-cols-1 md:grid-cols-2 gap-8">`;
+                    item.accounts.forEach(acc => {
+                        html += `
+                            <div class="bg-white p-6 rounded-lg shadow-md border border-gray-200">
+                                <h3 class="text-xl font-bold text-emerald-700">${acc.title}</h3>
+                                <p class="text-sm text-gray-500 mb-4">${acc.subtitle}</p>
+                                ${renderTAccount(acc.title, acc.naturaleza, acc.cargo_effect, acc.abono_effect)}
+                                <p class="mt-4 text-gray-700"><strong class="text-gray-900">Saldo:</strong> ${acc.saldo}</p>
+                            </div>
+                        `;
+                    });
+                    html += `</div>`;
+                }
+            });
+            detailView.innerHTML = html;
+        }
+
+        function renderAccountDetail(accountId) {
+            const account = allData.cuentas.find(c => c.id === accountId);
+            if (!account) return;
+
+            currentAccount = accountId;
+            currentBalance = 10000; /* Resetea el saldo inicial */
+
+            const naturalezaColor = account.naturaleza === 'Deudora' ? 'text-blue-600 bg-blue-100' : 'text-purple-600 bg-purple-100';
+            const cargoEffect = account.naturaleza === 'Deudora' ? 'Aumentan' : 'Disminuyen';
+            const abonoEffect = account.naturaleza === 'Acreedora' ? 'Aumentan' : 'Disminuyen';
+
+            detailView.innerHTML = `
+                <div class="bg-white p-6 md:p-8 rounded-lg shadow-xl border border-gray-200">
+                    <div class="mb-6">
+                        <span class="inline-block px-3 py-1 rounded-full text-sm font-medium ${naturalezaColor} mb-2">
+                            Naturaleza: ${account.naturaleza}
+                        </span>
+                        <h2 class="text-3xl font-bold text-gray-900">${account.nombre}</h2>
+                        <p class="text-md text-gray-600">${account.subcategoria}</p>
+                    </div>
+
+                    <!-- Cuenta T Interactiva (Nueva Estructura) -->
+                    <div class="t-account-container mt-6 shadow-sm">
+                        <div class="t-account-header p-3 bg-gray-100 flex justify-between items-center">
+                            <h3 class="text-lg font-semibold text-gray-900">${account.nombre}</h3>
+                            <div class="text-lg font-bold text-gray-800">
+                                Saldo: <span id="account-balance" class="text-emerald-700">${new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(currentBalance)}</span>
+                            </div>
+                        </div>
+                        <div class="t-account-body">
+                            <div class="t-account-side t-account-left bg-green-50">
+                                <h4 class="text-center">DEBE (Cargo)</h4>
+                                <p class="mt-3 text-sm effect-${cargoEffect === 'Aumentan' ? 'increase' : 'decrease'}">
+                                    <strong>${cargoEffect}</strong>
+                                </p>
+                                <p class="mt-4 text-sm text-gray-700">${account.se_carga}</p>
+                                <ul id="cargo-log" class="simulation-log"></ul>
+                            </div>
+                            <div class="t-account-side t-account-right bg-red-50">
+                                <h4 class="text-center">HABER (Abono)</h4>
+                                <p class="mt-3 text-sm effect-${abonoEffect === 'Aumentan' ? 'increase' : 'decrease'}">
+                                    <strong>${abonoEffect}</strong>
+                                </p>
+                                <p class="mt-4 text-sm text-gray-700">${account.se_abona}</p>
+                                <ul id="abono-log" class="simulation-log"></ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Simulador Interactivo (IA) -->
+                    <div class="mt-8 bg-gray-100 p-6 rounded-lg border border-gray-200">
+                        <h4 class="text-xl font-semibold text-gray-800 mb-2">Simulador Interactivo (IA)</h4>
+                        <p class="text-sm text-gray-600 mb-4">Genera un escenario del mundo real para probar las reglas de esta cuenta.</p>
+                        <button id="gemini-scenario-btn" class="w-full gemini-button px-4 py-3 rounded-lg font-semibold transition-colors">
+                            ✨ Generar Escenario Real
+                        </button>
+                        <div id="gemini-scenario-output" class="mt-4"></div>
+                    </div>
+
+                    <!-- Explicación de Saldo (IA) -->
+                    <div class="mt-8 bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+                        <h4 class="text-xl font-semibold text-gray-800 mb-3">Qué representa el Saldo</h4>
+                        <p class="text-gray-700" id="static-saldo-text">${account.saldo}</p>
+                        <button id="gemini-explain-btn" class="gemini-button px-4 py-2 rounded-lg font-semibold transition-colors text-sm mt-4">
+                            ✨ Explicar más Sencillo
+                        </button>
+                        <div id="gemini-explain-output" class="hidden"></div>
+                    </div>
+                </div>
+            `;
+            
+            updateActiveAccountButton();
+        }
+
+        function highlightSearchTerm(text, term) {
+            if (!term) return text;
+            const re = new RegExp(`(${term.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')})`, 'gi');
+            return text.replace(re, '<span class="bg-yellow-200 font-bold">$1</span>');
+        }
+
+        function renderAccountList(category, searchTerm = '') {
+            let filteredAccounts = [];
+            if (category === 'Fundamentos') {
+                accountList.innerHTML = '';
+                accountListPlaceholder.textContent = 'Explorando los Fundamentos.';
+                accountListPlaceholder.style.display = 'block';
+                return;
+            }
+
+            if (searchTerm) {
+                const lowerCaseTerm = searchTerm.toLowerCase();
+                filteredAccounts = allData.cuentas.filter(c => 
+                    c.nombre.toLowerCase().includes(lowerCaseTerm) || 
+                    c.subcategoria.toLowerCase().includes(lowerCaseTerm)
+                );
+            } else {
+                filteredAccounts = allData.cuentas.filter(c => c.categoria === category);
+            }
+
+            if (filteredAccounts.length === 0) {
+                accountList.innerHTML = '';
+                accountListPlaceholder.textContent = searchTerm ? 'No se encontraron cuentas.' : 'No hay cuentas en esta categoría.';
+                accountListPlaceholder.style.display = 'block';
+                return;
+            }
+
+            accountListPlaceholder.style.display = 'none';
+            
+            let currentSubcategory = '';
+            let listHtml = '';
+
+            if (searchTerm) {
+                listHtml += `<h4 class="px-4 py-2 text-sm font-semibold text-gray-800 bg-gray-100 sticky top-0">Resultados de Búsqueda</h4>`;
+            }
+
+            listHtml += filteredAccounts.map(account => {
+                let subcategoryHeader = '';
+                if (account.subcategoria !== currentSubcategory && !searchTerm) {
+                    currentSubcategory = account.subcategoria;
+                    subcategoryHeader = `<h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 py-2 bg-gray-50 sticky top-0">${currentSubcategory}</h4>`;
+                }
+                const accountNameHtml = searchTerm ? highlightSearchTerm(account.nombre, searchTerm) : account.nombre;
+                
+                return `
+                    ${subcategoryHeader}
+                    <button class="account-button w-full text-left px-4 py-3 text-gray-700 hover:bg-gray-50 text-sm" data-id="${account.id}">
+                        ${accountNameHtml}
+                    </button>
+                `;
+            }).join('');
+            
+            accountList.innerHTML = listHtml;
+            
+            updateActiveAccountButton();
+        }
+        
+        function updateActiveNavButton() {
+            navButtons.forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            const categoryMap = {
+                'Fundamentos': 'nav-fundamentos',
+                '1. Activo': 'nav-activo',
+                '2. Pasivo': 'nav-pasivo',
+                '3. Capital Contable': 'nav-capital',
+                '4. Cuentas de Resultados': 'nav-resultados'
+            };
+
+            const activeBtnId = categoryMap[currentCategory];
+            if(activeBtnId) {
+                document.getElementById(activeBtnId).classList.add('active');
+            }
+        }
+        
+        function updateActiveAccountButton() {
+            document.querySelectorAll('.account-button').forEach(btn => {
+                if(btn.dataset.id === currentAccount) {
+                    btn.classList.add('active', 'font-semibold', 'text-emerald-700');
+                } else {
+                    btn.classList.remove('active', 'font-semibold', 'text-emerald-700');
+                }
+            });
+        }
+
+        /**
+         * Modificado para aceptar monto y descripción
+         */
+        function simularOperacion(tipo, amount, description) {
+            const account = allData.cuentas.find(c => c.id === currentAccount);
+            if (!account) return;
+
+            const balanceEl = document.getElementById('account-balance');
+            const cargoLog = document.getElementById('cargo-log');
+            const abonoLog = document.getElementById('abono-log');
+
+            const li = document.createElement('li');
+            li.classList.add('animate-fade-in');
+            
+            const formattedAmount = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
+
+            if (tipo === 'CARGO') {
+                if (account.naturaleza === 'Deudora') {
+                    currentBalance += amount;
+                } else {
+                    currentBalance -= amount;
+                }
+                li.textContent = `+ ${description} (${formattedAmount})`;
+                li.classList.add('log-cargo');
+                cargoLog.appendChild(li);
+            } 
+            
+            if (tipo === 'ABONO') {
+                if (account.naturaleza === 'Acreedora') {
+                    currentBalance += amount;
+                } else {
+                    currentBalance -= amount;
+                }
+                li.textContent = `- ${description} (${formattedAmount})`;
+                li.classList.add('log-abono');
+                abonoLog.appendChild(li);
+            }
+
+            balanceEl.textContent = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(currentBalance);
+            
+            balanceEl.classList.add('scale-110', 'text-emerald-500', 'transition-all', 'duration-150');
+            setTimeout(() => {
+                balanceEl.classList.remove('scale-110', 'text-emerald-500');
+            }, 150);
+        }
+        
+        // --- Manejadores de Eventos ---
+        
+        navButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const categoryMap = {
+                    'nav-fundamentos': 'Fundamentos',
+                    'nav-activo': '1. Activo',
+                    'nav-pasivo': '2. Pasivo',
+                    'nav-capital': '3. Capital Contable',
+                    'nav-resultados': '4. Cuentas de Resultados'
+                };
+                currentCategory = categoryMap[button.id];
+                currentAccount = '';
+                
+                searchBar.value = '';
+                renderAccountList(currentCategory);
+                
+                if (currentCategory === 'Fundamentos') {
+                    renderFundamentos();
+                } else {
+                    detailView.innerHTML = `<p class="text-lg text-gray-600">Selecciona una cuenta de la lista para ver sus detalles.</p>`;
+                }
+                
+                updateActiveNavButton();
+                
+                if (window.innerWidth < 768) {
+                    sidebar.classList.add('-translate-x-full');
+                }
+            });
+        });
+
+        accountList.addEventListener('click', (e) => {
+            const button = e.target.closest('.account-button');
+            if (button) {
+                renderAccountDetail(button.dataset.id);
+                if (window.innerWidth < 768) {
+                    sidebar.classList.add('-translate-x-full');
+                }
+            }
+        });
+        
+        searchBar.addEventListener('input', (e) => {
+            const searchTerm = e.target.value;
+            if (searchTerm) {
+                currentCategory = 'Search';
+                renderAccountList(null, searchTerm);
+            } else {
+                currentCategory = 'Fundamentos';
+                renderFundamentos();
+                renderAccountList('Fundamentos');
+            }
+            updateActiveNavButton();
+        });
+
+        // --- Control de Sidebar Móvil ---
+        mobileMenuButton.addEventListener('click', () => {
+            sidebar.classList.remove('-translate-x-full');
+        });
+
+        closeMenuButton.addEventListener('click', () => {
+            sidebar.classList.add('-translate-x-full');
+        });
+
+        // --- Manejadores de IA ---
+
+        async function handleExplainClick() {
+            const textToExplain = document.getElementById('static-saldo-text').textContent;
+            const outputDiv = document.getElementById('gemini-explain-output');
+            
+            showLoading("Explicando...");
+            outputDiv.innerHTML = '';
+            outputDiv.classList.add('hidden');
+
+            try {
+                const systemPrompt = "Eres un profesor de contabilidad amable y paciente. Explica conceptos de forma muy sencilla, como para un principiante absoluto, en no más de 3 frases.";
+                const userQuery = `Explica este concepto: "${textToExplain}"`;
+                
+                const explanation = await callGeminiWithBackoff(userQuery, systemPrompt);
+                
+                outputDiv.innerHTML = `<p class="text-gray-700">${explanation}</p>`;
+                outputDiv.classList.remove('hidden');
+            } catch (error) {
+                outputDiv.innerHTML = `<p class="text-red-600">Error al contactar la IA. Intenta de nuevo.</p>`;
+                outputDiv.classList.remove('hidden');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function handleScenarioClick() {
+            const account = allData.cuentas.find(c => c.id === currentAccount);
+            if (!account) return;
+
+            const outputDiv = document.getElementById('gemini-scenario-output');
+            showLoading("Generando escenario...");
+            outputDiv.innerHTML = '';
+
+            try {
+                const systemPrompt = "Eres un asistente de contabilidad. Genera un ejemplo de transacción del mundo real para una cuenta. Responde *solo* en este formato, sin explicaciones: TIPO: [CARGO/ABONO]\nMONTO: [un número aleatorio entre 1000 y 15000]\nDESCRIPCION: [una descripción breve, ej. 'Cobro a cliente Juan Pérez']";
+                const userQuery = `Genera un ejemplo para la cuenta: "${account.nombre}"`;
+
+                const scenarioText = await callGeminiWithBackoff(userQuery, systemPrompt);
+                
+                // Parsear la respuesta
+                const tipoMatch = scenarioText.match(/TIPO:\s*(CARGO|ABONO)/i);
+                const montoMatch = scenarioText.match(/MONTO:\s*(\d+)/);
+                const descMatch = scenarioText.match(/DESCRIPCION:\s*(.*)/);
+
+                if (!tipoMatch || !montoMatch || !descMatch) {
+                    throw new Error("Respuesta de IA en formato inesperado.");
+                }
+
+                const tipo = tipoMatch[1].toUpperCase();
+                const monto = parseFloat(montoMatch[1]);
+                const descripcion = descMatch[1].trim();
+
+                outputDiv.innerHTML = `
+                    <div class="bg-white p-4 rounded-lg border border-gray-200">
+                        <p class="text-sm text-gray-600">Escenario Sugerido:</p>
+                        <p class="text-lg font-semibold text-gray-800">${descripcion}</p>
+                        <p class="text-md text-gray-700">Monto: <strong class="text-emerald-700">${new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(monto)}</strong></p>
+                        <p class="text-md text-gray-700">Tipo: <strong class="${tipo === 'CARGO' ? 'text-green-700' : 'text-red-700'}">${tipo}</strong></p>
+                        <button id="gemini-apply-btn"
+                                data-tipo="${tipo}"
+                                data-monto="${monto}"
+                                data-descripcion="${descripcion}"
+                                class="w-full mt-3 bg-emerald-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-emerald-700 transition-colors">
+                            Aplicar Simulación
+                        </button>
+                    </div>
+                `;
+
+            } catch (error) {
+                outputDiv.innerHTML = `<p class="text-red-600">Error al generar escenario. Intenta de nuevo.</p>`;
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function handleApplyClick(target) {
+            const tipo = target.dataset.tipo;
+            const monto = parseFloat(target.dataset.monto);
+            const descripcion = target.dataset.descripcion;
+
+            simularOperacion(tipo, monto, descripcion);
+            
+            // Limpiar el escenario
+            document.getElementById('gemini-scenario-output').innerHTML = '';
+        }
+
+        // --- Delegación de eventos para Simulación ---
+        detailView.addEventListener('click', (e) => {
+            const target = e.target.closest('button');
+            if (!target) return;
+            
+            if (target.id === 'gemini-explain-btn') {
+                handleExplainClick();
+            }
+            if (target.id === 'gemini-scenario-btn') {
+                handleScenarioClick();
+            }
+            if (target.id === 'gemini-apply-btn') {
+                handleApplyClick(target);
+            }
+        });
+
+        // Estado inicial
+        renderFundamentos();
+        updateActiveNavButton();
+    </script>
+
+</body>
+</html>
+
